@@ -1,0 +1,204 @@
+---
+title: "midterm 2"
+author: "scott polomsky"
+date: "2024-11-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+
+
+
+library(dplyr)
+library(ggplot2)
+library(maps)
+library(patchwork)
+library(sf)
+library(RColorBrewer)
+library(ggthemes)
+library(viridisLite)
+library(ggwordcloud)
+library(tidyverse)
+production <- read_csv("https://raw.githubusercontent.com/oconnellmj/sta309/main/milk-production-tonnes.csv") %>%
+  filter(!is.na(`Milk Production (tonnes)`)) %>%
+  mutate(Year = as.integer(Year))
+consumption <- read_csv("https://raw.githubusercontent.com/oconnellmj/sta309/main/per-capita-milk-consumption.csv") %>%
+filter(!is.na(`Milk consumption (kilograms per year per capita)`)) %>%
+  mutate(Year = as.integer(Year))
+us_data <- consumption %>%
+  filter(Code == "USA") %>%
+  select(Year, `Milk consumption (kilograms per year per capita)`)
+us_prod <- production %>%
+  filter(Code == "USA") %>%
+  select(Year, `Milk Production (tonnes)`)
+world <- st_read("world-administrative-boundaries")
+world <- read_sf("world-administrative-boundaries.shp")
+world_prod <- left_join(world, production, by = c("color_code" = "Code"))
+world_consume <- left_join(world, consumption, by = c("color_code" = "Code"))
+consume_map <- ggplot(world_consume) + 
+  geom_sf(aes(fill = `Milk consumption (kilograms per year per capita)`), color = "grey50") +  
+  coord_sf(crs = st_crs(4326)) + 
+  scale_fill_viridis_c(option = "magma", name = "Milk Consumption\n(kg per capita)", na.value = "grey90") +
+  theme_minimal() +
+  labs(title = "Global Milk Consumption Per Capita",
+       caption = "Data Source: FAO & OurWorldInData")+
+  theme(plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "right",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 8))
+
+consume_map
+
+prod_map <- ggplot(world_prod) + 
+  geom_sf(aes(fill = `Milk Production (tonnes)`), color = "gray50") +
+  coord_sf(crs = st_crs(4326)) +
+  scale_fill_viridis_c(
+    option = "magma", 
+    name = "Milk Production\n(tonnes)", 
+    na.value = "gray90") +
+  labs(title = "Global Milk Production (Tonnes)",
+    caption = "Data Source: FAO & OurWorldInData") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+    plot.caption = element_text(size = 10))
+prod_map
+production_consumption <- us_prod %>%
+  inner_join(us_data, by = "Year") %>%
+  rename(Production = `Milk Production (tonnes)`,
+         Consumption = `Milk consumption (kilograms per year per capita)`)
+consume_graph <- ggplot(us_data, aes(x = Year, y = `Milk consumption (kilograms per year per capita)`)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "darkblue", size = 2) +
+  labs(title = "Milk Consumption Over Time in the US",
+    x = "Year",
+    y = "Milk Consumption (kg per capita)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10))
+
+prod_graph <- ggplot(us_prod, aes(x = Year, y = `Milk Production (tonnes)`)) +
+  geom_line(color = "red", size = 1) +
+  geom_point(color = "darkred", size = 2) +
+  labs(title = "Milk Production Over Time in the US",
+       x = "Year",
+       y = "Milk Production (Tons)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10))
+scatter_milk <- ggplot(production_consumption, aes(x = Production, y = Consumption)) +
+  geom_point(color = "blue", alpha = 0.7, size = 3) +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(title = "Relationship Between Milk Production and Consumption In the United States",
+    x = "Milk Production (tonnes)",
+    y = "Milk Consumption (kg per capita)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10))
+dashboard1 <- ((scatter_milk | prod_graph | consume_graph) / (prod_map | consume_map)) +
+  plot_layout(heights = c(1, 1),
+    widths = c(1, 1)) +
+  plot_annotation(title = "Milk Production and Consumption Dashboard",
+    subtitle = "Visualizing Global Trends and Relationships",
+    theme = theme(plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(size = 14, hjust = 0.5)))
+ggsave(filename = "milk_dashboard.png", plot = dashboard1, width = 16, height = 9, dpi = 300)
+dashboard1
+```
+
+
+```{r}
+library(tidytext)
+data(stop_words)
+library(ggwordcloud)
+library(stringr)
+spot_url <- "https://raw.githubusercontent.com/adashofdata/taylor_swift_data/refs/heads/main/Taylor_Swift_Spotify/taylor_swift_spotify_data.csv"
+spotify <- read_csv(spot_url)
+lyric_url <- "https://raw.githubusercontent.com/adashofdata/taylor_swift_data/refs/heads/main/Taylor_Swift_Genius/taylor_swift_genius_data.csv"
+lyrics <- read_csv(lyric_url)
+
+folklore <- lyrics %>% filter(Album == "folklore")
+midnights <- lyrics %>% filter(Album == "Midnights")
+
+
+clean_folklore <- folklore %>%
+  unnest_tokens(word, Lyrics) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE)
+
+
+clean_midnights <- midnights %>%
+  unnest_tokens(word, Lyrics) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE)
+folklore_cloud <- ggplot(clean_folklore, aes(label = word, size = n))+
+   geom_text_wordcloud() +
+  theme_minimal()
+
+midnights_cloud <- ggplot(clean_midnights, aes(label = word, size = n))+
+   geom_text_wordcloud() +
+  theme_minimal()
+word_sentiments <- get_sentiments("bing")
+folklore_sent <- folklore %>%
+  unnest_tokens(word, Lyrics) %>%
+  anti_join(stop_words) %>%
+  inner_join(word_sentiments, by = "word") %>%
+  mutate(sentiment_value = ifelse(sentiment == "positive", 1, -1)) %>%
+  group_by(`Song Name`) %>%
+  summarise(sentiment_score = sum(sentiment_value))
+
+midnights_sent <- midnights %>%
+  unnest_tokens(word, Lyrics) %>%
+  anti_join(stop_words) %>%
+  inner_join(word_sentiments, by = "word") %>%
+  mutate(sentiment_value = ifelse(sentiment == "positive", 1, -1)) %>%
+  group_by(`Song Name`) %>%
+  summarise(sentiment_score = sum(sentiment_value))
+ggplot() +
+  geom_point(data = folklore_sent, aes(x =`Song Name`, y = sentiment_score), color = "blue", size = 2) +
+  geom_point(data = midnights_sent, aes(x =`Song Name`, y = sentiment_score), color = "red", size = 2) +
+  labs(title = "Sentiment Comparison: Folklore vs Midnights", x = "Song Index", y = "Sentiment Score") +
+  scale_color_manual(values = c("Folklore" = "blue", "Midnights" = "red")) +
+  theme_minimal()
+print(midnights_cloud)
+print(folklore_cloud)
+folklore_sent <- folklore_sent %>%
+  mutate(`Song Name` = str_to_lower(str_trim(str_replace_all(`Song Name`, "[^[:alnum:][:space:]]", ""))))
+
+spotify <- spotify %>%
+  mutate(track_name = str_to_lower(str_trim(str_replace_all(`Song Name`, "[^[:alnum:][:space:]]", ""))))
+folklore_spot <- folklore_sent %>%
+  inner_join(spotify, by = "Song Name")
+midnights_spot <- midnights_sent %>%
+  inner_join(spotify, by = "Song Name")
+folklore_dance <- ggplot() +
+  geom_point(data = folklore_spot, aes(x = Danceability, y = sentiment_score), alpha = 0.6) +
+  labs(title = "Sentiment Score vs Danceability, Folklore", x = "Danceability", y = "Sentiment Score") +
+  theme_minimal() 
+midnights_dance <- ggplot() +
+  geom_line(data = midnights_spot, aes(x = Danceability, y = sentiment_score), alpha = 0.6) +
+  labs(title = "Sentiment Score vs Danceability, Midnights", x = "Danceability", y = "Sentiment Score") +
+  theme_minimal() 
+tempo_graph <- ggplot() +
+  geom_point(data = folklore_spot, aes(x = Tempo, y = sentiment_score, color = "Folklore"), alpha = 0.6) +
+  geom_point(data = midnights_spot, aes(x = Tempo, y = sentiment_score, color = "Midnights"), alpha = 0.6) +
+  labs(title = "Sentiment Score vs Tempo", x = "Tempo", y = "Sentiment Score") +
+  scale_color_manual(values = c("Folklore" = "blue", "Midnights" = "red")) +
+  theme_minimal() 
+speech_graph <- ggplot() +
+  geom_line(data = folklore_spot, aes(x = Speechiness, y = sentiment_score, color = "Folklore"), alpha = 0.6) +
+  geom_line(data = midnights_spot, aes(x = Speechiness, y = sentiment_score, color = "Midnights"), alpha = 0.6) +
+  labs(title = "Sentiment Score vs Speechiness", x = "Speechiness", y = "Sentiment Score") +
+  scale_color_manual(values = c("Folklore" = "blue", "Midnights" = "red")) +
+  theme_minimal() 
+dashboard2 <- (midnights_cloud + folklore_cloud) / (folklore_dance + midnights_dance + speech_graph + tempo_graph)
+dashboard2
+```
